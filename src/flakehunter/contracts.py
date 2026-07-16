@@ -60,3 +60,44 @@ class VerificationResult:
         "rejected_still_flaky",
         "rejected_breaks_suite",
     ]
+
+class SandboxRunner:
+    def run_once(
+        self,
+        test_ids: list[str],
+        *,
+        seed: int | None,
+        forked: bool,
+        randomize_order: bool,
+    ) -> list[RunResult]:
+        raise NotImplementedError
+
+    def run_isolated(self, test_id: str, *, seed: int | None) -> RunResult:
+        raise NotImplementedError
+
+
+class Detector:
+    def detect(
+        self,
+        test_ids: list[str],
+        *,
+        n_runs: int,
+        vary_order: bool,
+        vary_seed: bool,
+    ) -> list[FlakeVerdict]:
+        raise NotImplementedError
+
+
+class Classifier:
+    def classify(self, verdict: FlakeVerdict) -> RootCause:
+        raise NotImplementedError
+
+
+class Fixer:
+    def propose_fix(self, cause: RootCause, verdict: FlakeVerdict) -> FixProposal:
+        raise NotImplementedError
+
+
+class Verifier:
+    def verify(self, fix: FixProposal, before: FlakeVerdict) -> VerificationResult:
+        raise NotImplementedError
