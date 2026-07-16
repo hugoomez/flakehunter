@@ -1,0 +1,30 @@
+{
+  "tests/test_catalog.py::test_read_from_cache": {
+    "category": "order",
+    "expected_rate": [0.3, 0.7]
+  },
+  "tests/test_cart_discounts.py::test_discount_count": {
+    "category": "shared_state",
+    "expected_rate": [0.3, 0.7]
+  },
+  "tests/test_deck.py::test_shuffle_preserves_first": {
+    "category": "randomness",
+    "expected_rate": [0.9, 1.0]
+  },
+  "tests/test_pricing_rounding.py::test_round_trip": {
+    "category": "randomness",
+    "expected_rate": [0.03, 0.08]
+  },
+  "tests/test_async_worker.py::test_worker_completes": {
+    "category": "timing",
+    "expected_rate": [0.05, 0.3]
+  },
+  "tests/test_broken_feature.py::test_feature_x": {
+    "category": "deterministic_failure",
+    "expected_rate": [1.0, 1.0]
+  },
+  "tests/test_stable_total.py::test_total_is_correct": {
+    "category": "stable",
+    "expected_rate": [0.0, 0.0]
+  }
+}

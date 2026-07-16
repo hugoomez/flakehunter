@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flakehunter"
+version = "0.1.0"
+description = "Detect, classify, fix, and verify flaky Python tests."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "FlakeHunter contributors" },
+]
+
+[project.scripts]
+flakehunter = "flakehunter.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "pytest-forked>=1.6",
+  "pytest-json-report>=1.5.0",
+  "pytest-randomly>=3.15",
+  "pytest-repeat>=0.9.4",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["demo/src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flakehunter"]
