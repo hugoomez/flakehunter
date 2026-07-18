@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
 
-from flakehunter.runner import SandboxRunner
+from flakehunter.runner import SandboxRunner, _default_python_executable
 
 
 def test_demo_stable_total_passes() -> None:
@@ -166,6 +167,60 @@ def test_differing_seeds_produce_differing_rng_without_randomizing_order(
     draws = output_path.read_text(encoding="utf-8").split()
     assert len(draws) == 2
     assert draws[0] != draws[1]
+
+
+def test_run_once_succeeds_from_a_cwd_outside_the_project(tmp_path: Path) -> None:
+    """Regression test: Fixer/Verifier run pytest from a fresh temp-dir copy
+    of the repo, not the project's own cwd. A trampoline-stub
+    ``python_executable`` (uv-managed venvs on Windows) can fail to spawn
+    from such a cwd with "uv trampoline failed to spawn Python child
+    process" -- a failure that silently degraded to outcome="error" with no
+    test coverage catching it.
+    """
+    assert tmp_path.resolve() != Path.cwd().resolve()
+
+    test_file = tmp_path / "test_sandboxed.py"
+    test_file.write_text(
+        "def test_ok() -> None:\n    assert 1 + 1 == 2\n",
+        encoding="utf-8",
+    )
+    runner = SandboxRunner(cwd=tmp_path)
+
+    results = runner.run_once(
+        ["test_sandboxed.py"],
+        seed=None,
+        forked=False,
+        randomize_order=False,
+    )
+
+    assert len(results) == 1
+    assert results[0].outcome == "passed", results[0].error_repr
+    assert results[0].error_repr is None
+
+
+def test_default_python_executable_resolves_to_a_working_binary() -> None:
+    _default_python_executable.cache_clear()
+    try:
+        executable, extra_env = _default_python_executable()
+    finally:
+        _default_python_executable.cache_clear()
+
+    assert Path(executable).is_file()
+    base = getattr(sys, "_base_executable", None)
+    if base and base != sys.executable:
+        # The base interpreter bypasses the trampoline but needs the venv's
+        # site-packages added back manually.
+        assert executable == base
+        assert "PYTHONPATH" in extra_env
+    else:
+        assert executable == sys.executable
+        assert extra_env == {}
+
+
+def test_explicit_python_executable_bypasses_resolution() -> None:
+    runner = SandboxRunner(python_executable="/some/fixed/python")
+    assert runner.python_executable == "/some/fixed/python"
+    assert runner.extra_env == {}
 
 
 def test_timeout_returns_error_promptly(tmp_path: Path) -> None:

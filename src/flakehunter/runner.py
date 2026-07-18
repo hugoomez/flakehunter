@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import time
 from pathlib import Path
@@ -16,6 +19,77 @@ from flakehunter.contracts import RunResult, SandboxRunner as SandboxRunnerContr
 
 
 Outcome = Literal["passed", "failed", "error", "skipped"]
+
+_PROBE_TIMEOUT_S = 10.0
+
+
+def _venv_site_packages() -> str:
+    return sysconfig.get_path("purelib")
+
+
+def _can_import_pytest(executable: str, *, extra_env: Mapping[str, str]) -> bool:
+    """Probe whether ``executable`` can spawn and import pytest from a cwd
+
+    other than this process's own -- exactly the condition that silently
+    broke Fixer/Verifier's temporary sandbox copies.
+    """
+    env = os.environ.copy()
+    env.update(extra_env)
+    try:
+        with tempfile.TemporaryDirectory() as probe_cwd:
+            result = subprocess.run(
+                [executable, "-c", "import pytest"],
+                cwd=probe_cwd,
+                env=env,
+                capture_output=True,
+                timeout=_PROBE_TIMEOUT_S,
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+@functools.lru_cache(maxsize=1)
+def _default_python_executable() -> tuple[str, dict[str, str]]:
+    """Resolve a Python executable that reliably spawns regardless of cwd.
+
+    ``sys.executable`` inside a uv-managed venv on Windows can be a small
+    (~45KB) trampoline stub that re-execs the real interpreter; spawning it
+    from certain working directories -- notably Fixer/Verifier's temporary
+    sandbox copies -- can fail with "uv trampoline failed to spawn Python
+    child process". ``sys._base_executable`` (Python >= 3.11) is the real
+    interpreter underneath the trampoline and spawns reliably regardless of
+    cwd, but bypassing the trampoline also bypasses the venv discovery it
+    performs, so the venv's site-packages must be added back explicitly via
+    PYTHONPATH. Platforms without the trampoline distinction (the attribute
+    is absent, or identical to ``sys.executable``) just use ``sys.executable``
+    unmodified, as before.
+
+    If neither is a working non-trampoline binary, fall back to a
+    system-wide ``python``/``py`` install with the venv's site-packages on
+    PYTHONPATH, same idea as ``base_executable``.
+    """
+    site_packages = _venv_site_packages()
+    base = getattr(sys, "_base_executable", None)
+
+    if base and base != sys.executable:
+        extra_env = {"PYTHONPATH": site_packages}
+        if _can_import_pytest(base, extra_env=extra_env):
+            return base, extra_env
+
+    if _can_import_pytest(sys.executable, extra_env={}):
+        return sys.executable, {}
+
+    for candidate in (shutil.which("python"), shutil.which("py")):
+        if not candidate:
+            continue
+        extra_env = {"PYTHONPATH": site_packages}
+        if _can_import_pytest(candidate, extra_env=extra_env):
+            return candidate, extra_env
+
+    # Nothing verified: keep the historical default so failures surface as
+    # the familiar subprocess spawn error rather than a resolution crash.
+    return sys.executable, {}
 
 
 class SandboxRunner(SandboxRunnerContract):
@@ -34,10 +108,14 @@ class SandboxRunner(SandboxRunnerContract):
 
         self.cwd = Path(cwd) if cwd is not None else Path.cwd()
         self.timeout_s = timeout_s
-        self.python_executable = (
-            str(python_executable) if python_executable is not None else sys.executable
-        )
-        self.extra_env = dict(extra_env) if extra_env is not None else {}
+        user_env = dict(extra_env) if extra_env is not None else {}
+        if python_executable is not None:
+            self.python_executable = str(python_executable)
+            self.extra_env = user_env
+        else:
+            resolved_executable, resolved_env = _default_python_executable()
+            self.python_executable = resolved_executable
+            self.extra_env = {**resolved_env, **user_env}
 
     def run_once(
         self,
