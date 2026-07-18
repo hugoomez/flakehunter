@@ -51,7 +51,7 @@ class SandboxRunner(SandboxRunnerContract):
             return []
 
         report_path = self._new_report_path()
-        seed_env = self._seed_env(seed, randomize_order=randomize_order)
+        seed_env = self._seed_env(seed)
         started_at = time.monotonic()
 
         try:
@@ -158,12 +158,15 @@ class SandboxRunner(SandboxRunnerContract):
             f"--json-report-file={report_path}",
         ]
 
-        if seed is not None and randomize_order:
+        if seed is not None:
             command.append(f"--randomly-seed={seed}")
         if forked:
             command.append("--forked")
         if not randomize_order:
-            command.extend(["-p", "no:randomly"])
+            # Keeps pytest-randomly active (so --randomly-seed still seeds the
+            # RNG) while leaving collection order untouched. `-p no:randomly`
+            # would disable the plugin and silently drop the seed.
+            command.append("--randomly-dont-reorganize")
 
         command.extend(test_ids)
         return command
@@ -175,15 +178,13 @@ class SandboxRunner(SandboxRunnerContract):
             env["PYTHONHASHSEED"] = str(seed)
         return env
 
-    def _seed_env(self, seed: int | None, *, randomize_order: bool) -> dict[str, str]:
+    def _seed_env(self, seed: int | None) -> dict[str, str]:
         if seed is None:
             return {}
-        seed_env = {
+        return {
             "PYTHONHASHSEED": str(seed),
+            "randomly-seed": str(seed),
         }
-        if randomize_order:
-            seed_env["randomly-seed"] = str(seed)
-        return seed_env
 
     def _new_report_path(self) -> Path:
         fd, path = tempfile.mkstemp(prefix="flakehunter-", suffix=".json")

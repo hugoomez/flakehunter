@@ -43,6 +43,9 @@ _DECK = "demo/tests/test_deck.py::test_shuffle_preserves_first"
 _DECK_REL = "demo/tests/test_deck.py"
 _STABLE = "demo/tests/test_stable_total.py::test_total_is_correct"
 _CART_REL = "demo/src/shopcart/cart.py"
+_CATALOG = "demo/tests/test_catalog.py::test_read_from_cache"
+_CATALOG_REL = "demo/tests/test_catalog.py"
+_CATALOG_LOAD = "demo/tests/test_catalog.py::test_load_populates_cache"
 
 # random.seed(0) makes random.choice pick a 0.104 candidate, so test_round_trip
 # passes deterministically. Confirmed empirically (seeds 0-4 all pass; 5 fails).
@@ -79,6 +82,28 @@ def _seed_round_trip(seed: int = _SEED_LITERAL) -> str:
         f"    random.seed({seed})\n    rounding_candidates",
         1,
     )
+
+
+def _fix_read_from_cache_with_own_setup() -> str:
+    """The genuine order-dependency fix: give the test its own fixture instead
+    of relying on test_load_populates_cache's side effect on the module-level
+    cache (the fix pattern the "order" category instructions describe)."""
+    before = _read(_CATALOG_REL)
+    after = before.replace(
+        "from shopcart.catalog import Catalog\n",
+        "import pytest\n\nfrom shopcart.catalog import Catalog\n\n\n"
+        "@pytest.fixture\n"
+        "def _cached_tea() -> None:\n"
+        '    Catalog().load("tea", 4.50)\n',
+        1,
+    )
+    after = after.replace(
+        "def test_read_from_cache() -> None:",
+        "def test_read_from_cache(_cached_tea: None) -> None:",
+        1,
+    )
+    assert after != before, "test_catalog.py shape changed; update the fix helper"
+    return after
 
 
 def _fix(
@@ -353,6 +378,37 @@ def test_genuine_seed_fix_is_verified() -> None:
 
     result = _real_verifier([_ROUND_TRIP, _STABLE], threshold=0.02).verify(
         _fix(diff, files_touched=[_ROUND_TRIP_REL]), _verdict()
+    )
+
+    assert result.verdict == "verified_fix", result
+    assert result.contract_passed is True
+    assert result.suite_still_green is True
+    assert result.assertion_count_preserved is True
+    assert result.no_skip_introduced is True
+    assert result.failure_rate_after == 0.0
+    _, expected_ci = wilson_interval(k=0, n=150)
+    assert result.ci95_upper_after == pytest.approx(expected_ci)
+
+
+@pytest.mark.slow
+def test_order_dependency_fixture_fix_is_verified() -> None:
+    """A fixture that gives the test its own setup fixes test_read_from_cache
+    regardless of suite order -> verified_fix.
+
+    Mirrors test_genuine_seed_fix_is_verified's math: threshold=0.02 => N=150,
+    so rule_of_three_upper(150)=0.02 passes the gate at k_after=0. Before the
+    fix the test only passes when test_load_populates_cache happens to run
+    first in the randomized order, so before=(15/30) gives Fisher enough power
+    to be significant. The suite is kept to the two catalog tests to bound the
+    ~150 in-suite runs.
+    """
+    before = _read(_CATALOG_REL)
+    after = _fix_read_from_cache_with_own_setup()
+    diff = _make_diff(_CATALOG_REL, before, after)
+
+    result = _real_verifier([_CATALOG, _CATALOG_LOAD], threshold=0.02).verify(
+        _fix(diff, test_id=_CATALOG, files_touched=[_CATALOG_REL]),
+        _verdict(test_id=_CATALOG, n_runs=30, n_failures=15),
     )
 
     assert result.verdict == "verified_fix", result

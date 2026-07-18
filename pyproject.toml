@@ -12,12 +12,19 @@ license = { text = "MIT" }
 authors = [
   { name = "FlakeHunter contributors" },
 ]
+dependencies = [
+    "openai-codex>=0.1.0b2",
+    "scipy>=1.17.1",
+    "statsmodels>=0.14.6",
+    "textual>=0.60",
+]
 
 [project.scripts]
 flakehunter = "flakehunter.cli:main"
 
 [dependency-groups]
 dev = [
+  "mypy>=2.3.0",
   "pytest>=8.0",
   "pytest-forked>=1.6",
   "pytest-json-report>=1.5.0",
@@ -27,6 +34,10 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["demo/src"]
+markers = [
+  "codex: hits the real Codex API (slow, costs tokens, needs login); opt in with FLAKEHUNTER_CODEX_E2E=1",
+  "slow: real repeated SandboxRunner subprocess batteries (minutes); opt in with -m slow",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/flakehunter"]

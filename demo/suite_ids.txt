@@ -1,0 +1,15 @@
+# Suite node ids for demo/, relative to demo/ (matches what SandboxRunner
+# expects when cwd=demo). Generated because collect_suite()'s
+# `pytest --collect-only` climbs to the outer flakehunter/pyproject.toml's
+# [tool.pytest.ini_options] (demo/ has no pytest config of its own) and
+# reports ids prefixed "demo/tests/...", one segment off from what the
+# runner needs here. Pass this file via --suite-file to bypass discovery.
+tests/test_cart_discounts.py::test_add_discount_to_shared_cart
+tests/test_cart_discounts.py::test_discount_count
+tests/test_pricing_rounding.py::test_round_trip
+tests/test_deck.py::test_shuffle_preserves_first
+tests/test_async_worker.py::test_worker_completes
+tests/test_stable_total.py::test_total_is_correct
+tests/test_broken_feature.py::test_feature_x
+tests/test_catalog.py::test_read_from_cache
+tests/test_catalog.py::test_load_populates_cache
